@@ -70,3 +70,8 @@ vite.config.ts.timestamp-*
 
 # Project specific
 public/logo.webp
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
