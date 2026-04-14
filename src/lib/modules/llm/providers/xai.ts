@@ -1,0 +1,50 @@
+import { BaseProvider } from '~/lib/modules/llm/base-provider';
+import type { ModelInfo } from '~/lib/modules/llm/types';
+import type { IProviderSetting } from '~/types/model';
+import type { LanguageModel } from 'ai';
+import type { Env } from '~/types/global';
+import { createOpenAI } from '@ai-sdk/openai';
+
+export default class XAIProvider extends BaseProvider {
+  name = 'xAI';
+  getApiKeyLink = 'https://docs.x.ai/docs/quickstart#creating-an-api-key';
+
+  config = {
+    apiTokenKey: 'XAI_API_KEY',
+  };
+
+  staticModels: ModelInfo[] = [
+    { name: 'grok-3', label: 'xAI Grok 3', provider: 'xAI', maxTokenAllowed: 131000 },
+    { name: 'grok-3-mini', label: 'xAI Grok 3 Mini', provider: 'xAI', maxTokenAllowed: 131000 },
+    { name: 'grok-3-reasoner', label: 'xAI Grok 3 Reasoner', provider: 'xAI', maxTokenAllowed: 131000 },
+    { name: 'grok-2-latest', label: 'xAI Grok 2', provider: 'xAI', maxTokenAllowed: 131000 },
+  ];
+
+  getModelInstance(options: {
+    model: string;
+    serverEnv: Env;
+    apiKeys?: Record<string, string>;
+    providerSettings?: Record<string, IProviderSetting>;
+  }): LanguageModel {
+    const { model, serverEnv, apiKeys, providerSettings } = options;
+
+    const { apiKey } = this.getProviderBaseUrlAndKey({
+      apiKeys,
+      providerSettings: providerSettings?.[this.name],
+      serverEnv: serverEnv as any,
+      defaultBaseUrlKey: '',
+      defaultApiTokenKey: 'XAI_API_KEY',
+    });
+
+    if (!apiKey) {
+      throw new Error(`Missing API key for ${this.name} provider`);
+    }
+
+    const openai = createOpenAI({
+      baseURL: 'https://api.x.ai/v1',
+      apiKey,
+    });
+
+    return openai(model);
+  }
+}

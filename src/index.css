@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+:root {
+  font-family: 'Inter', system-ui, sans-serif;
+  --kiri-green: #0D7C3D;
+  --kiri-green-dark: #0A5C2C;
+  --kiri-gold: #C4992E;
+  --kiri-bg: #121212;
+  --kiri-surface: #1E1E1E;
+  --kiri-surface-subtle: #121212;
+  --kiri-border: #3D3D3D;
+  --kiri-heading: #FFFFFF;
+  --kiri-body: #E0E0E0;
+  --kiri-muted: #A1A1AA;
+
+  /* FlexLayout 0.8.x Required Variables */
+  --font-size: 11px;
+  --font-family: 'Inter', sans-serif;
+  
+  line-height: 1.5;
+  color-scheme: dark;
+  color: var(--kiri-body);
+  background-color: var(--kiri-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, .brand-font {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  color: var(--kiri-heading);
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+}
+
+.app-container {
+  width: 100%;
+  height: 100%;
+  background-color: #1e1e1e;
+}
+
+/* FlexLayout Customizations to match VS Code */
+.flexlayout__layout {
+  background-color: #1e1e1e !important;
+}
+
+.flexlayout__tabset {
+  background-color: #161616 !important;
+}
+
+/* Modal & Profile UI */
+.modal-glass {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.settings-modal {
+  background: var(--kiri-surface);
+  border: 1px solid var(--kiri-border);
+  border-radius: 12px;
+  padding: 24px;
+  width: 450px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+}
+
+.profile-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--kiri-border);
+  transition: transform 0.2s;
+}
+
+.profile-avatar:hover {
+  transform: scale(1.1);
+  border-color: var(--kiri-accent);
+}
