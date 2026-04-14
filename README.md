@@ -1,4 +1,4 @@
-# ⚡ Kiri Code
+<img src="public/icons.svg" alt="Kiri Code" />
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
