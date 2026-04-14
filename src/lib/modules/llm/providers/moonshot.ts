@@ -118,6 +118,6 @@ export default class MoonshotProvider extends BaseProvider {
       apiKey,
     });
 
-    return openai(model);
+    return openai.chat(model);
   }
 }

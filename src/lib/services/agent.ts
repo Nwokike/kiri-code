@@ -8,7 +8,7 @@ import type { Env } from '~/types/global';
 export class AgentService {
   private parser = new MessageParser();
 
-  async runLoop(prompt: string, providerName: string, modelName: string, apiKey: string) {
+  async runLoop(prompt: string, providerName: string, modelName: string, creds: Record<string, string>) {
     const manager = LLMManager.getInstance();
     const provider = manager.getProvider(providerName);
     
@@ -16,8 +16,8 @@ export class AgentService {
 
     const model = provider.getModelInstance({
       model: modelName,
-      serverEnv: (window as any).process?.env || {} as Env,
-      apiKeys: { [providerName]: apiKey }
+      serverEnv: { ...((window as any).process?.env || {}), ...creds } as Env,
+      apiKeys: { [providerName]: creds[provider.config.apiTokenKey || ''] || creds[`${providerName.toUpperCase()}_API_KEY`] || '' }
     });
 
     await getWebContainer();

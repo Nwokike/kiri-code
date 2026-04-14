@@ -190,12 +190,11 @@ export default class ZaiProvider extends BaseProvider {
       throw new Error(`Missing API key for ${this.name} provider`);
     }
 
-    const token = this._generateToken(apiKey);
     const zaiClient = createOpenAI({
       baseURL: baseUrl,
-      apiKey: token,
+      apiKey: apiKey, // Zhipu AI supports raw API keys in the Authorization header for some endpoints, or we pass it directly
     });
 
-    return zaiClient(model);
+    return zaiClient.chat(model);
   }
 }

@@ -3,6 +3,7 @@ import MonacoEditor from '@monaco-editor/react';
 import CodeMirror from '@uiw/react-codemirror';
 import { getWebContainer } from '../../lib/services/webcontainer';
 import { runtimeRouter } from '../../lib/services/RuntimeRouter'; // <-- IMPORT THE ROUTER
+import { X } from 'lucide-react';
 
 const EditorRouter: React.FC = () => {
   const [currentFile, setCurrentFile] = useState<string | null>(null);
@@ -69,6 +70,11 @@ const EditorRouter: React.FC = () => {
     }
   };
 
+  const handleCloseFile = () => {
+    setCurrentFile(null);
+    setFileContent('');
+  };
+
   const getLanguage = (path: string) => {
     const ext = path.split('.').pop()?.toLowerCase();
     switch (ext) {
@@ -111,8 +117,15 @@ const EditorRouter: React.FC = () => {
     <div className="h-full w-full flex flex-col bg-[var(--kiri-bg)]">
       {/* Editor Tab Bar WITH RUN BUTTON */}
       <div className="h-9 shrink-0 bg-[var(--kiri-surface)] border-b border-[var(--kiri-border)] flex items-center px-3 justify-between">
-        <div className="text-[11px] font-medium text-[var(--kiri-green)] border-b-2 border-[var(--kiri-green)] h-full flex items-center px-2">
-          {currentFile.split('/').pop()}
+        <div className="text-[11px] font-medium text-[var(--kiri-green)] border-b-2 border-[var(--kiri-green)] h-full flex items-center px-2 gap-2 group">
+          <span>{currentFile.split('/').pop()}</span>
+          <button 
+            onClick={handleCloseFile}
+            className="opacity-0 group-hover:opacity-100 hover:text-white transition-opacity"
+            title="Close File"
+          >
+            <X size={12} />
+          </button>
         </div>
         <button 
           onClick={handleRunFile}

@@ -1,14 +1,30 @@
 import React, { useState, useEffect } from 'react';
 
 const PROVIDERS = [
-  { key: 'GOOGLE_API_KEY', label: 'Google Gemini', link: 'https://aistudio.google.com/app/apikey' },
+  { key: 'AMAZON_BEDROCK_API_KEY', label: 'Amazon Bedrock', link: 'https://aws.amazon.com/bedrock/' },
   { key: 'ANTHROPIC_API_KEY', label: 'Anthropic', link: 'https://console.anthropic.com/settings/keys' },
-  { key: 'OPENAI_API_KEY', label: 'OpenAI', link: 'https://platform.openai.com/api-keys' },
+  { key: 'CEREBRAS_API_KEY', label: 'Cerebras', link: 'https://inference.cerebras.ai/' },
+  { key: 'COHERE_API_KEY', label: 'Cohere', link: 'https://dashboard.cohere.com/api-keys' },
   { key: 'DEEPSEEK_API_KEY', label: 'Deepseek', link: 'https://platform.deepseek.com/' },
+  { key: 'FIREWORKS_API_KEY', label: 'Fireworks', link: 'https://fireworks.ai/api-keys' },
+  { key: 'GITHUB_TOKEN', label: 'GitHub Models', link: 'https://github.com/settings/tokens' },
+  { key: 'GOOGLE_API_KEY', label: 'Google Gemini', link: 'https://aistudio.google.com/app/apikey' },
   { key: 'GROQ_API_KEY', label: 'Groq', link: 'https://console.groq.com/keys' },
-  { key: 'OPEN_ROUTER_API_KEY', label: 'OpenRouter', link: 'https://openrouter.ai/keys' },
+  { key: 'HUGGINGFACE_API_KEY', label: 'HuggingFace', link: 'https://huggingface.co/settings/tokens' },
+  { key: 'HYPERBOLIC_API_KEY', label: 'Hyperbolic', link: 'https://app.hyperbolic.xyz/' },
+  { key: 'LMSTUDIO_API_BASE_URL', label: 'LMStudio Base URL', link: 'https://lmstudio.ai/' },
   { key: 'MISTRAL_API_KEY', label: 'Mistral', link: 'https://console.mistral.ai/api-keys/' },
+  { key: 'MOONSHOT_API_KEY', label: 'Moonshot', link: 'https://platform.moonshot.cn/console/api-keys' },
+  { key: 'NVIDIA_NIM_API_KEY', label: 'Nvidia NIM', link: 'https://build.nvidia.com/explore/discover' },
+  { key: 'OLLAMA_API_BASE_URL', label: 'Ollama Base URL', link: 'https://ollama.com/' },
+  { key: 'OPENAI_API_KEY', label: 'OpenAI', link: 'https://platform.openai.com/api-keys' },
+  { key: 'OPEN_ROUTER_API_KEY', label: 'OpenRouter', link: 'https://openrouter.ai/keys' },
   { key: 'PERPLEXITY_API_KEY', label: 'Perplexity', link: 'https://www.perplexity.ai/settings/api' },
+  { key: 'TOGETHER_API_KEY', label: 'Together', link: 'https://api.together.xyz/settings/api-keys' },
+  { key: 'XAI_API_KEY', label: 'xAI', link: 'https://console.x.ai/' },
+  { key: 'ZAI_API_KEY', label: 'Z.ai', link: 'https://z.ai/' },
+  { key: 'OPENAI_LIKE_API_KEY', label: 'OpenAI Compatible Key', link: '' },
+  { key: 'OPENAI_LIKE_API_BASE_URL', label: 'OpenAI Compatible Base URL', link: '' },
 ];
 
 export const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {

@@ -1,7 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { agentService } from '../../lib/services/agent';
 import { LLMManager } from '../../lib/modules/llm/LLMManager';
-import { Send, Settings2, Sparkles } from 'lucide-react';
+import { Send, Settings2, Sparkles, User, Bot } from 'lucide-react';
+
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+}
 
 const Chat: React.FC = () => {
   const [prompt, setPrompt] = useState('');
@@ -10,12 +15,18 @@ const Chat: React.FC = () => {
   const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-flash');
   const [providers, setProviders] = useState<string[]>([]);
   const [showSettings, setShowSettings] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const llmManager = LLMManager.getInstance();
     const allProviders = llmManager.getAllProviders().map(p => p.name);
     setProviders(allProviders);
   }, []);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,21 +47,27 @@ const Chat: React.FC = () => {
     else if (selectedProvider === 'Mistral') keyName = 'MISTRAL_API_KEY';
     else if (selectedProvider === 'Perplexity') keyName = 'PERPLEXITY_API_KEY';
     else if (selectedProvider === 'xAI') keyName = 'XAI_API_KEY';
+    else if (selectedProvider === 'Nvidia NIM') keyName = 'NVIDIA_NIM_API_KEY';
+    else if (selectedProvider === 'OpenAILike') keyName = 'OPENAI_LIKE_API_KEY';
     
     const requiredKey = creds[keyName];
 
-    if (!requiredKey) {
+    if (!requiredKey && keyName) {
       alert(`Please click the "Settings" button in the top right and enter your ${selectedProvider} API key.`);
       return;
     }
 
+    const userMessage = prompt;
+    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setPrompt('');
     setIsLoading(true);
+
     try {
-      await agentService.runLoop(prompt, selectedProvider, selectedModel, requiredKey);
-      setPrompt('');
+      const response = await agentService.runLoop(userMessage, selectedProvider, selectedModel, creds);
+      setMessages(prev => [...prev, { role: 'assistant', content: response }]);
     } catch (error: any) {
       console.error(error);
-      alert(`Agent Error: ${error.message}`);
+      setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${error.message}` }]);
     } finally {
       setIsLoading(false);
     }
@@ -94,19 +111,85 @@ const Chat: React.FC = () => {
                 className="w-full bg-[#0a0a0a] border border-[#222] rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-emerald-500 transition-colors"
               />
             </div>
+            {selectedProvider === 'OpenAILike' && (
+              <>
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Base URL</label>
+                  <input 
+                    type="text"
+                    value={JSON.parse(localStorage.getItem('kiri_creds') || '{}').OPENAI_LIKE_API_BASE_URL || ''}
+                    onChange={(e) => {
+                      const creds = JSON.parse(localStorage.getItem('kiri_creds') || '{}');
+                      creds.OPENAI_LIKE_API_BASE_URL = e.target.value;
+                      localStorage.setItem('kiri_creds', JSON.stringify(creds));
+                      // Force re-render to update the input value
+                      setSelectedProvider('OpenAILike');
+                    }}
+                    placeholder="e.g. https://api.example.com/v1"
+                    className="w-full bg-[#0a0a0a] border border-[#222] rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-emerald-500 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">API Key</label>
+                  <input 
+                    type="password"
+                    value={JSON.parse(localStorage.getItem('kiri_creds') || '{}').OPENAI_LIKE_API_KEY || ''}
+                    onChange={(e) => {
+                      const creds = JSON.parse(localStorage.getItem('kiri_creds') || '{}');
+                      creds.OPENAI_LIKE_API_KEY = e.target.value;
+                      localStorage.setItem('kiri_creds', JSON.stringify(creds));
+                      // Force re-render to update the input value
+                      setSelectedProvider('OpenAILike');
+                    }}
+                    placeholder="Enter API Key"
+                    className="w-full bg-[#0a0a0a] border border-[#222] rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-emerald-500 transition-colors"
+                  />
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
 
       {/* Main Chat Area */}
-      <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center justify-center text-center">
-        <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-900/20 border border-emerald-500/30 flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(16,185,129,0.1)]">
-          <Sparkles className="text-emerald-400" size={28} />
-        </div>
-        <h3 className="text-lg font-semibold text-white mb-2 tracking-tight">What are we building?</h3>
-        <p className="text-sm text-gray-400 max-w-[240px] leading-relaxed">
-          I can write code, create files, and run terminal commands to help you build your project.
-        </p>
+      <div className="flex-1 overflow-y-auto p-4 flex flex-col custom-scrollbar">
+        {messages.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center">
+            <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-900/20 border border-emerald-500/30 flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(16,185,129,0.1)]">
+              <Sparkles className="text-emerald-400" size={28} />
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-2 tracking-tight">What are we building?</h3>
+            <p className="text-sm text-gray-400 max-w-[240px] leading-relaxed">
+              I can write code, create files, and run terminal commands to help you build your project.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4 pb-4">
+            {messages.map((msg, idx) => (
+              <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'user' ? 'bg-[#222]' : 'bg-emerald-900/50 border border-emerald-500/30'}`}>
+                  {msg.role === 'user' ? <User size={14} className="text-gray-300" /> : <Bot size={14} className="text-emerald-400" />}
+                </div>
+                <div className={`flex-1 px-4 py-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-[#222] text-gray-200 rounded-tr-sm' : 'bg-transparent text-gray-300 border border-[#222] rounded-tl-sm'}`}>
+                  <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                </div>
+              </div>
+            ))}
+            {isLoading && (
+              <div className="flex gap-3">
+                <div className="w-8 h-8 rounded-full bg-emerald-900/50 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                  <Bot size={14} className="text-emerald-400" />
+                </div>
+                <div className="flex-1 px-4 py-3 rounded-2xl text-sm bg-transparent text-gray-300 border border-[#222] rounded-tl-sm flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        )}
       </div>
 
       {/* Input Area */}

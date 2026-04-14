@@ -15,7 +15,31 @@ export class RuntimeRouter {
   private workers: Partial<Record<Extension, Worker>> = {};
   private currentResolver: ((value: boolean) => void) | null = null;
 
-  private constructor() {}
+  private constructor() {
+    // Preload Pyodide worker on startup
+    this.preloadWorker('py');
+  }
+
+  private preloadWorker(ext: Extension) {
+    if (!this.workers[ext]) {
+      const workerUrl = new URL(`../workers/${this.getWorkerName(ext)}.worker.ts`, import.meta.url);
+      this.workers[ext] = new Worker(workerUrl);
+
+      this.workers[ext]!.onmessage = (event) => {
+        const { type, text } = event.data;
+        
+        if (type === 'stdout') {
+           // <-- 4. Pipe WASM stdout directly to the Xterm UI
+           terminalEmitter.emit(text); 
+        } else if (type === 'done') {
+           if (this.currentResolver) {
+             this.currentResolver(true);
+             this.currentResolver = null;
+           }
+        }
+      };
+    }
+  }
 
   static getInstance(): RuntimeRouter {
     if (!RuntimeRouter.instance) {
@@ -65,24 +89,7 @@ export class RuntimeRouter {
   }
 
   private async executeWasm(ext: Extension, _filepath: string, code: string) {
-    if (!this.workers[ext]) {
-      const workerUrl = new URL(`../workers/${this.getWorkerName(ext)}.worker.ts`, import.meta.url);
-      this.workers[ext] = new Worker(workerUrl, { type: 'module' });
-
-      this.workers[ext]!.onmessage = (event) => {
-        const { type, text } = event.data;
-        
-        if (type === 'stdout') {
-           // <-- 4. Pipe WASM stdout directly to the Xterm UI
-           terminalEmitter.emit(text); 
-        } else if (type === 'done') {
-           if (this.currentResolver) {
-             this.currentResolver(true);
-             this.currentResolver = null;
-           }
-        }
-      };
-    }
+    this.preloadWorker(ext);
 
     const workspaceFiles = await this.getWorkspaceFiles(); 
 
