@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Terminal } from './workbench/terminal/Terminal';
 import { getWebContainer } from '../lib/services/webcontainer';
 import { terminalEmitter } from '../lib/services/terminalEmitter';
@@ -7,17 +7,120 @@ import FileTree from './workbench/FileTree';
 import EditorRouter from './editor/EditorRouter';
 import { SettingsModal } from './workbench/SettingsModal';
 import GitHubManager from './workbench/GitHubManager';
-import { Settings, Terminal as TerminalIcon, FolderTree, GitBranch, MessageSquare, Code2, X } from 'lucide-react';
+import { 
+  Settings, Terminal as TerminalIcon, FolderTree, GitBranch, MessageSquare, 
+  X, Globe, RefreshCw, Smartphone, Tablet, Monitor,
+  ExternalLink, ChevronUp, ChevronDown, Zap
+} from 'lucide-react';
 
 const IDE: React.FC = () => {
   const terminalRef = useRef<any>(null);
   const shellSpawned = useRef(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeLeftTab, setActiveLeftTab] = useState<'files' | 'github'>('files');
-  const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(true);
-  const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
+  const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(false);
+  const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
   const [isBottomPanelOpen, setIsBottomPanelOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
 
+  // Preview panel state
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewMode, setPreviewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  const previewIframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Status bar state
+  const [editorStatus, setEditorStatus] = useState<{
+    fileName: string;
+    language: string;
+    modified: boolean;
+  } | null>(null);
+
+  // Responsive detection
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      // On desktop, open panels by default
+      if (!mobile) {
+        setIsLeftPanelOpen(true);
+        setIsRightPanelOpen(true);
+      }
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Listen for editor status updates (from EditorRouter)
+  useEffect(() => {
+    const handleEditorStatus = (e: Event) => {
+      const custom = e as CustomEvent;
+      setEditorStatus(custom.detail);
+    };
+    window.addEventListener('kiri:editor-status', handleEditorStatus);
+    return () => window.removeEventListener('kiri:editor-status', handleEditorStatus);
+  }, []);
+
+  // Listen for WebContainer server-ready events to auto-open preview
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+
+    async function listenForServer() {
+      try {
+        const wc = await getWebContainer();
+        wc.on('server-ready', (_port: number, url: string) => {
+          setPreviewUrl(url);
+          setIsPreviewOpen(true);
+        });
+      } catch (e) {
+        // WebContainer not available
+      }
+    }
+
+    listenForServer();
+    return () => cleanup?.();
+  }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const ctrl = e.ctrlKey || e.metaKey;
+
+      if (ctrl && e.key === 'b') {
+        e.preventDefault();
+        setIsLeftPanelOpen(prev => !prev);
+      }
+      if (ctrl && e.key === 'l') {
+        e.preventDefault();
+        setIsRightPanelOpen(prev => !prev);
+      }
+      if (ctrl && e.key === 'j') {
+        e.preventDefault();
+        setIsBottomPanelOpen(prev => !prev);
+      }
+      // Escape closes overlays on mobile
+      if (e.key === 'Escape' && isMobile) {
+        setIsLeftPanelOpen(false);
+        setIsRightPanelOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isMobile]);
+
+  // Manage body scroll when overlay is open on mobile
+  useEffect(() => {
+    if (isMobile && (isLeftPanelOpen || isRightPanelOpen)) {
+      document.body.classList.add('overlay-open');
+    } else {
+      document.body.classList.remove('overlay-open');
+    }
+    return () => document.body.classList.remove('overlay-open');
+  }, [isMobile, isLeftPanelOpen, isRightPanelOpen]);
+
+  // Shell setup
   useEffect(() => {
     if (shellSpawned.current) return;
     shellSpawned.current = true;
@@ -78,157 +181,345 @@ const IDE: React.FC = () => {
     };
   }, []);
 
+  // Panel toggle helpers
+  const toggleLeftPanel = useCallback((tab: 'files' | 'github') => {
+    if (activeLeftTab === tab && isLeftPanelOpen) {
+      setIsLeftPanelOpen(false);
+    } else {
+      setActiveLeftTab(tab);
+      setIsLeftPanelOpen(true);
+    }
+  }, [activeLeftTab, isLeftPanelOpen]);
+
+  const previewWidth = previewMode === 'mobile' ? 'w-[375px]' : previewMode === 'tablet' ? 'w-[768px]' : 'w-full';
+
+  // =============================================
+  // LEFT PANEL CONTENT (used in both desktop + mobile overlay)
+  // =============================================
+  const LeftPanelContent = (
+    <div className="flex flex-col h-full bg-[var(--kiri-bg)] w-full">
+      <div className="h-10 shrink-0 flex items-center justify-between px-3 border-b border-[var(--kiri-border)]">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--kiri-muted)]">
+          {activeLeftTab === 'files' ? 'Explorer' : 'Source Control'}
+        </span>
+        {isMobile && (
+          <button onClick={() => setIsLeftPanelOpen(false)} className="p-1 rounded hover:bg-[#ffffff08] text-[var(--kiri-muted)] hover:text-white transition-colors">
+            <X size={14} />
+          </button>
+        )}
+      </div>
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
+        {activeLeftTab === 'files' ? <FileTree /> : <GitHubManager />}
+      </div>
+    </div>
+  );
+
+  // =============================================
+  // RIGHT PANEL CONTENT (used in both desktop + mobile overlay)
+  // =============================================
+  const RightPanelContent = (
+    <div className="flex flex-col h-full bg-[var(--kiri-bg)] w-full">
+      <div className="h-10 shrink-0 flex items-center justify-between px-3 border-b border-[var(--kiri-border)]">
+        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--kiri-muted)]">
+          <MessageSquare size={12} />
+          <span>AI Agent</span>
+        </div>
+        {isMobile && (
+          <button onClick={() => setIsRightPanelOpen(false)} className="p-1 rounded hover:bg-[#ffffff08] text-[var(--kiri-muted)] hover:text-white transition-colors">
+            <X size={14} />
+          </button>
+        )}
+      </div>
+      <div className="flex-1 overflow-hidden">
+        <Chat />
+      </div>
+    </div>
+  );
+
   return (
-    <div className="flex flex-col h-screen w-full bg-[#0a0a0a] text-gray-300 font-sans overflow-hidden">
-      {/* Header */}
-      <header className="h-12 shrink-0 border-b border-[#222] flex items-center px-4 justify-between bg-[#111] z-50">
-        <div className="flex items-center gap-3">
-          <img src="/favicon.svg" alt="Logo" className="w-8 h-8 object-contain" />
-          <div className="flex flex-col">
-            <span className="text-[10px] text-emerald-400 uppercase tracking-wider font-bold">Serverless IDE</span>
+    <div className="flex flex-col h-screen w-full bg-[var(--kiri-bg)] text-[var(--kiri-body)] font-sans overflow-hidden">
+      
+      {/* ============================================ */}
+      {/* HEADER */}
+      {/* ============================================ */}
+      <header className="h-11 shrink-0 border-b border-[var(--kiri-border)] flex items-center px-3 justify-between bg-[var(--kiri-surface)] z-50">
+        <div className="flex items-center gap-2.5">
+          <img src="/favicon.svg" alt="Kiri Code" className="w-6 h-6 object-contain" />
+          <div className="hidden sm:flex flex-col leading-none">
+            <span className="text-[10px] text-[var(--kiri-green)] uppercase tracking-[0.15em] font-bold">Kiri Code</span>
           </div>
+          {/* Separator */}
+          <div className="hidden sm:block w-px h-5 bg-[var(--kiri-border)] mx-1" />
+          {/* Breadcrumb */}
+          {editorStatus && (
+            <span className="hidden sm:block text-[11px] text-[var(--kiri-muted)] truncate max-w-[200px]">
+              {editorStatus.fileName}
+            </span>
+          )}
         </div>
         
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          {/* Preview toggle */}
+          {previewUrl && (
+            <button
+              onClick={() => setIsPreviewOpen(prev => !prev)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-colors ${
+                isPreviewOpen 
+                  ? 'bg-[var(--kiri-green)]/15 text-[var(--kiri-green)] border border-[var(--kiri-green)]/20' 
+                  : 'bg-[#ffffff06] text-[var(--kiri-muted)] hover:text-white border border-[var(--kiri-border)]'
+              }`}
+            >
+              <Globe size={12} />
+              <span className="hidden sm:inline">Preview</span>
+            </button>
+          )}
+
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-[#222] hover:bg-[#333] border border-[#333] transition-colors text-xs font-medium text-gray-300 hover:text-white"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-[#ffffff06] hover:bg-[#ffffff0d] border border-[var(--kiri-border)] transition-colors text-[11px] font-medium text-[var(--kiri-muted)] hover:text-white"
           >
-            <Settings size={14} />
-            <span>Settings</span>
+            <Settings size={13} />
+            <span className="hidden sm:inline">Settings</span>
           </button>
         </div>
       </header>
       
-      {/* Main Content */}
+      {/* ============================================ */}
+      {/* MAIN CONTENT */}
+      {/* ============================================ */}
       <main className="flex-1 flex overflow-hidden relative">
         
-        {/* Left Sidebar (Activity Bar + Panel) */}
-        <div className={`flex shrink-0 border-r border-[#222] bg-[#111] transition-all duration-300 ${isLeftPanelOpen ? 'w-64' : 'w-12'}`}>
-          {/* Activity Bar */}
-          <div className="w-12 shrink-0 flex flex-col items-center py-4 gap-4 border-r border-[#222] bg-[#0a0a0a]">
-            <button 
-              onClick={() => {
-                if (activeLeftTab === 'files' && isLeftPanelOpen) setIsLeftPanelOpen(false);
-                else { setActiveLeftTab('files'); setIsLeftPanelOpen(true); }
-              }}
-              className={`p-2 rounded-lg transition-colors ${activeLeftTab === 'files' && isLeftPanelOpen ? 'bg-[#222] text-white' : 'text-gray-500 hover:text-gray-300'}`}
-              title="Explorer"
-            >
-              <FolderTree size={20} />
-            </button>
-            <button 
-              onClick={() => {
-                if (activeLeftTab === 'github' && isLeftPanelOpen) setIsLeftPanelOpen(false);
-                else { setActiveLeftTab('github'); setIsLeftPanelOpen(true); }
-              }}
-              className={`p-2 rounded-lg transition-colors ${activeLeftTab === 'github' && isLeftPanelOpen ? 'bg-[#222] text-white' : 'text-gray-500 hover:text-gray-300'}`}
-              title="Source Control"
-            >
-              <GitBranch size={20} />
-            </button>
-          </div>
-          
-          {/* Left Panel Content */}
-          {isLeftPanelOpen && (
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="h-10 shrink-0 flex items-center px-4 border-b border-[#222]">
-                <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                  {activeLeftTab === 'files' ? 'Explorer' : 'Source Control'}
-                </span>
-              </div>
-              <div className="flex-1 overflow-y-auto custom-scrollbar">
-                {activeLeftTab === 'files' ? <FileTree /> : <GitHubManager />}
-              </div>
-            </div>
-          )}
+        {/* ---- ACTIVITY BAR (always visible) ---- */}
+        <div className="w-11 shrink-0 flex flex-col items-center py-3 gap-1 border-r border-[var(--kiri-border)] bg-[var(--kiri-surface)]">
+          <button 
+            onClick={() => toggleLeftPanel('files')}
+            className={`p-2 rounded-lg transition-all duration-150 ${
+              activeLeftTab === 'files' && isLeftPanelOpen 
+                ? 'bg-[var(--kiri-green)]/15 text-[var(--kiri-green)]' 
+                : 'text-[var(--kiri-muted)] hover:text-white hover:bg-[#ffffff08]'
+            }`}
+            title="Explorer (Ctrl+B)"
+          >
+            <FolderTree size={18} />
+          </button>
+          <button 
+            onClick={() => toggleLeftPanel('github')}
+            className={`p-2 rounded-lg transition-all duration-150 ${
+              activeLeftTab === 'github' && isLeftPanelOpen 
+                ? 'bg-[var(--kiri-green)]/15 text-[var(--kiri-green)]' 
+                : 'text-[var(--kiri-muted)] hover:text-white hover:bg-[#ffffff08]'
+            }`}
+            title="Source Control"
+          >
+            <GitBranch size={18} />
+          </button>
+
+          {/* Spacer */}
+          <div className="flex-1" />
+
+          {/* Right panel toggle (bottom of activity bar) */}
+          <button 
+            onClick={() => setIsRightPanelOpen(prev => !prev)}
+            className={`p-2 rounded-lg transition-all duration-150 ${
+              isRightPanelOpen 
+                ? 'bg-[var(--kiri-green)]/15 text-[var(--kiri-green)]' 
+                : 'text-[var(--kiri-muted)] hover:text-white hover:bg-[#ffffff08]'
+            }`}
+            title="AI Agent (Ctrl+L)"
+          >
+            <MessageSquare size={18} />
+          </button>
         </div>
 
-        {/* Center Area (Editor + Terminal) */}
-        <div className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a]">
-          {/* Editor */}
-          <div className="flex-1 relative overflow-hidden flex flex-col">
-            <div className="h-10 shrink-0 flex items-center px-4 border-b border-[#222] bg-[#111]">
-              <div className="flex items-center gap-2 text-xs text-gray-400">
-                <Code2 size={14} />
-                <span>Editor</span>
-              </div>
+        {/* ---- MOBILE OVERLAYS ---- */}
+        {isMobile && isLeftPanelOpen && (
+          <>
+            <div className="overlay-backdrop" onClick={() => setIsLeftPanelOpen(false)} />
+            <div className="overlay-panel-left w-[280px]">
+              {LeftPanelContent}
             </div>
-            <div className="flex-1 overflow-hidden">
+          </>
+        )}
+
+        {isMobile && isRightPanelOpen && (
+          <>
+            <div className="overlay-backdrop" onClick={() => setIsRightPanelOpen(false)} />
+            <div className="overlay-panel-right w-[320px]">
+              {RightPanelContent}
+            </div>
+          </>
+        )}
+
+        {/* ---- DESKTOP LEFT PANEL ---- */}
+        {!isMobile && isLeftPanelOpen && (
+          <div className="w-60 shrink-0 border-r border-[var(--kiri-border)] bg-[var(--kiri-bg)] flex flex-col overflow-hidden transition-all duration-200">
+            {LeftPanelContent}
+          </div>
+        )}
+
+        {/* ---- CENTER AREA (Editor + Terminal + Preview) ---- */}
+        <div className="flex-1 flex flex-col min-w-0 bg-[var(--kiri-bg)]">
+          
+          {/* Editor + Preview split */}
+          <div className="flex-1 flex overflow-hidden">
+            {/* Editor */}
+            <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${isPreviewOpen && !isMobile ? 'border-r border-[var(--kiri-border)]' : ''}`}>
               <EditorRouter />
             </div>
+
+            {/* Live Preview Panel */}
+            {isPreviewOpen && previewUrl && (
+              <div className={`flex flex-col overflow-hidden shrink-0 ${isMobile ? 'hidden' : 'w-[45%]'}`}>
+                {/* Preview Toolbar */}
+                <div className="preview-toolbar">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setPreviewMode('desktop')}
+                      className={`p-1 rounded transition-colors ${previewMode === 'desktop' ? 'text-[var(--kiri-green)]' : 'text-[var(--kiri-muted)] hover:text-white'}`}
+                      title="Desktop"
+                    >
+                      <Monitor size={13} />
+                    </button>
+                    <button
+                      onClick={() => setPreviewMode('tablet')}
+                      className={`p-1 rounded transition-colors ${previewMode === 'tablet' ? 'text-[var(--kiri-green)]' : 'text-[var(--kiri-muted)] hover:text-white'}`}
+                      title="Tablet"
+                    >
+                      <Tablet size={13} />
+                    </button>
+                    <button
+                      onClick={() => setPreviewMode('mobile')}
+                      className={`p-1 rounded transition-colors ${previewMode === 'mobile' ? 'text-[var(--kiri-green)]' : 'text-[var(--kiri-muted)] hover:text-white'}`}
+                      title="Mobile"
+                    >
+                      <Smartphone size={13} />
+                    </button>
+                  </div>
+
+                  <div className="preview-url-bar">
+                    {previewUrl}
+                  </div>
+
+                  <button
+                    onClick={() => previewIframeRef.current?.contentWindow?.location.reload()}
+                    className="p-1 rounded text-[var(--kiri-muted)] hover:text-white transition-colors"
+                    title="Refresh"
+                  >
+                    <RefreshCw size={13} />
+                  </button>
+                  <a
+                    href={previewUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-1 rounded text-[var(--kiri-muted)] hover:text-white transition-colors"
+                    title="Open in new tab"
+                  >
+                    <ExternalLink size={13} />
+                  </a>
+                  <button
+                    onClick={() => setIsPreviewOpen(false)}
+                    className="p-1 rounded text-[var(--kiri-muted)] hover:text-white transition-colors"
+                    title="Close Preview"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+
+                {/* Preview iframe container */}
+                <div className="flex-1 bg-white flex items-start justify-center overflow-auto">
+                  <iframe
+                    ref={previewIframeRef}
+                    src={previewUrl}
+                    className={`h-full border-0 transition-all duration-300 ${previewWidth} max-w-full`}
+                    title="Live Preview"
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Terminal */}
-          {isBottomPanelOpen && (
-            <div className="h-64 shrink-0 border-t border-[#222] flex flex-col bg-[#111]">
-              <div className="h-10 shrink-0 flex items-center justify-between px-4 border-b border-[#222] bg-[#111]">
-                <div className="flex items-center gap-2 text-xs text-gray-400">
-                  <TerminalIcon size={14} />
-                  <span className="uppercase tracking-wider font-semibold">Terminal</span>
+          {isBottomPanelOpen ? (
+            <div className="h-56 shrink-0 border-t border-[var(--kiri-border)] flex flex-col bg-[var(--kiri-surface)]">
+              <div className="h-9 shrink-0 flex items-center justify-between px-3 border-b border-[var(--kiri-border)]">
+                <div className="flex items-center gap-2 text-[11px] text-[var(--kiri-muted)]">
+                  <TerminalIcon size={13} />
+                  <span className="uppercase tracking-wider font-semibold text-[10px]">Terminal</span>
                 </div>
-                <button 
-                  onClick={() => setIsBottomPanelOpen(false)}
-                  className="text-gray-500 hover:text-gray-300"
-                >
-                  <X size={14} />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button 
+                    onClick={() => setIsBottomPanelOpen(false)}
+                    className="p-1 rounded text-[var(--kiri-muted)] hover:text-white hover:bg-[#ffffff08] transition-colors"
+                    title="Close Terminal (Ctrl+J)"
+                  >
+                    <ChevronDown size={14} />
+                  </button>
+                </div>
               </div>
-              <div className="flex-1 p-2 overflow-hidden bg-[#0a0a0a]">
+              <div className="flex-1 overflow-hidden bg-[var(--kiri-bg)] p-1">
                 <Terminal ref={terminalRef} />
               </div>
             </div>
-          )}
-          
-          {/* Terminal Toggle (if closed) */}
-          {!isBottomPanelOpen && (
-            <div className="h-8 shrink-0 border-t border-[#222] flex items-center px-4 bg-[#111]">
+          ) : (
+            <div className="h-7 shrink-0 border-t border-[var(--kiri-border)] flex items-center px-3 bg-[var(--kiri-surface)]">
               <button 
                 onClick={() => setIsBottomPanelOpen(true)}
-                className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                className="flex items-center gap-1.5 text-[11px] text-[var(--kiri-muted)] hover:text-white transition-colors"
+                title="Open Terminal (Ctrl+J)"
               >
                 <TerminalIcon size={12} />
-                <span>Open Terminal</span>
+                <span className="text-[10px] uppercase tracking-wider font-medium">Terminal</span>
+                <ChevronUp size={12} />
               </button>
             </div>
           )}
         </div>
 
-        {/* Right Sidebar (Chat) */}
-        {isRightPanelOpen && (
-          <div className="w-80 shrink-0 border-l border-[#222] bg-[#111] flex flex-col">
-            <div className="h-10 shrink-0 flex items-center justify-between px-4 border-b border-[#222]">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
-                <MessageSquare size={14} />
-                <span>AI Agent</span>
-              </div>
-              <button 
-                onClick={() => setIsRightPanelOpen(false)}
-                className="text-gray-500 hover:text-gray-300"
-              >
-                <X size={14} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <Chat />
-            </div>
-          </div>
-        )}
-        
-        {/* Right Panel Toggle (if closed) */}
-        {!isRightPanelOpen && (
-          <div className="w-12 shrink-0 border-l border-[#222] bg-[#0a0a0a] flex flex-col items-center py-4">
-            <button 
-              onClick={() => setIsRightPanelOpen(true)}
-              className="p-2 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-[#222] transition-colors"
-              title="AI Agent"
-            >
-              <MessageSquare size={20} />
-            </button>
+        {/* ---- DESKTOP RIGHT PANEL ---- */}
+        {!isMobile && isRightPanelOpen && (
+          <div className="w-80 shrink-0 border-l border-[var(--kiri-border)] bg-[var(--kiri-bg)] flex flex-col overflow-hidden transition-all duration-200">
+            {RightPanelContent}
           </div>
         )}
       </main>
 
+      {/* ============================================ */}
+      {/* STATUS BAR */}
+      {/* ============================================ */}
+      <div className="status-bar">
+        <div className="status-bar-section">
+          <div className="status-bar-item clickable" onClick={() => toggleLeftPanel('github')}>
+            <GitBranch size={11} />
+            <span>main</span>
+          </div>
+          {editorStatus?.modified && (
+            <div className="status-bar-item">
+              <span className="text-[var(--kiri-gold)]">● Modified</span>
+            </div>
+          )}
+        </div>
+        <div className="status-bar-section">
+          {editorStatus && (
+            <>
+              <div className="status-bar-item">
+                <span>{editorStatus.language}</span>
+              </div>
+              <div className="status-bar-item">
+                <span>UTF-8</span>
+              </div>
+            </>
+          )}
+          <div className="status-bar-item">
+            <Zap size={10} className="text-[var(--kiri-green)]" />
+            <span className="text-[var(--kiri-green)]">Serverless</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ============================================ */}
+      {/* SETTINGS MODAL */}
+      {/* ============================================ */}
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </div>
   );

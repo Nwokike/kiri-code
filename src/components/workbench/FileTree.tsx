@@ -1,19 +1,38 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { getWebContainer } from '../../lib/services/webcontainer';
-import { FilePlus, FolderPlus, RefreshCw, Trash2 } from 'lucide-react';
+import { FilePlus, FolderPlus, RefreshCw, Trash2, ChevronRight, ChevronDown, FileText, FileCode, FileJson, FileImage, File } from 'lucide-react';
 
 interface FileNode {
   name: string;
-  path: string; // <-- ADDED: We need the full path to open it
+  path: string;
   isDirectory: boolean;
   children?: FileNode[];
 }
 
+// File icon mapper for visual context
+const getFileIcon = (name: string) => {
+  const ext = name.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'ts': case 'tsx': return <FileCode size={14} className="text-blue-400" />;
+    case 'js': case 'jsx': return <FileCode size={14} className="text-yellow-400" />;
+    case 'css': case 'scss': return <FileCode size={14} className="text-purple-400" />;
+    case 'html': return <FileCode size={14} className="text-orange-400" />;
+    case 'json': return <FileJson size={14} className="text-yellow-300" />;
+    case 'md': return <FileText size={14} className="text-gray-400" />;
+    case 'py': return <FileCode size={14} className="text-green-400" />;
+    case 'svg': case 'png': case 'jpg': case 'jpeg': case 'gif': case 'webp':
+      return <FileImage size={14} className="text-pink-400" />;
+    default: return <File size={14} className="text-gray-500" />;
+  }
+};
+
 const FileTree: React.FC = () => {
   const [files, setFiles] = useState<FileNode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
-  const fetchFiles = async () => {
+  const fetchFiles = useCallback(async () => {
     try {
       const wc = await getWebContainer();
       
@@ -25,7 +44,6 @@ const FileTree: React.FC = () => {
           if (entry.name === 'node_modules' || entry.name === '.git') continue;
 
           const isDir = entry.isDirectory();
-          // Clean the path so we don't end up with "./folder/file.js"
           const fullPath = dirPath === '.' ? entry.name : `${dirPath}/${entry.name}`;
 
           nodes.push({
@@ -57,18 +75,33 @@ const FileTree: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchFiles();
     const handleUpdate = () => fetchFiles();
     window.addEventListener('kiri:fs-updated', handleUpdate);
     return () => window.removeEventListener('kiri:fs-updated', handleUpdate);
-  }, []);
+  }, [fetchFiles]);
 
-  // THE BRIDGE TO THE EDITOR: Dispatch an event when a file is clicked
+  const toggleDir = (path: string) => {
+    setExpandedDirs(prev => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  };
+
   const handleFileClick = (path: string, isDirectory: boolean) => {
-    if (isDirectory) return; // Folders just toggle (handled by state if we want, but keeping simple for now)
+    setSelectedPath(path);
+    if (isDirectory) {
+      toggleDir(path);
+      return;
+    }
     window.dispatchEvent(new CustomEvent('kiri:open-file', { detail: { path } }));
   };
 
@@ -113,58 +146,113 @@ const FileTree: React.FC = () => {
   };
 
   const renderTree = (nodes: FileNode[], depth = 0) => {
-    return nodes.map((node) => (
-      <div key={node.path} style={{ paddingLeft: `${depth * 12}px` }}>
-        <div 
-          onClick={() => handleFileClick(node.path, node.isDirectory)}
-          className="flex items-center justify-between py-1 cursor-pointer hover:bg-[var(--kiri-surface)] group transition-colors rounded px-1"
-        >
-          <div className="flex items-center gap-2 overflow-hidden">
-            {node.isDirectory ? (
-              <span className="text-[var(--kiri-gold)] group-hover:scale-110 transition-transform shrink-0">📂</span>
-            ) : (
-              <span className="text-blue-400 group-hover:scale-110 transition-transform shrink-0">📄</span>
-            )}
-            <span className="truncate select-none group-hover:text-[var(--kiri-green)] transition-colors">{node.name}</span>
-          </div>
-          <button 
-            onClick={(e) => handleDelete(e, node.path, node.isDirectory)}
-            className="opacity-0 group-hover:opacity-100 p-1 text-[var(--kiri-muted)] hover:text-red-400 transition-all shrink-0"
-            title="Delete"
+    return nodes.map((node) => {
+      const isExpanded = expandedDirs.has(node.path);
+      const isSelected = selectedPath === node.path;
+      return (
+        <div key={node.path}>
+          <div 
+            onClick={() => handleFileClick(node.path, node.isDirectory)}
+            className={`flex items-center justify-between py-[5px] cursor-pointer group transition-all duration-100 rounded-[4px] mx-1 ${
+              isSelected 
+                ? 'bg-[#1a2e23] text-white' 
+                : 'hover:bg-[#ffffff06] text-[var(--kiri-body)]'
+            }`}
+            style={{ paddingLeft: `${depth * 16 + 8}px`, paddingRight: '8px' }}
           >
-            <Trash2 size={12} />
-          </button>
-        </div>
-        {node.isDirectory && node.children && (
-          <div className="ml-1 border-l border-[var(--kiri-border)]">
-            {renderTree(node.children, depth + 1)}
+            <div className="flex items-center gap-1.5 overflow-hidden min-w-0">
+              {/* Chevron for directories */}
+              {node.isDirectory ? (
+                <span className="flex items-center justify-center w-4 h-4 shrink-0 text-[var(--kiri-muted)] transition-transform duration-150">
+                  {isExpanded ? (
+                    <ChevronDown size={14} />
+                  ) : (
+                    <ChevronRight size={14} />
+                  )}
+                </span>
+              ) : (
+                /* Spacer for files to align with folder names */
+                <span className="w-4 h-4 shrink-0" />
+              )}
+
+              {/* Icon */}
+              <span className="shrink-0 flex items-center">
+                {node.isDirectory ? (
+                  <span className="text-[var(--kiri-gold)]">
+                    {isExpanded ? '📂' : '📁'}
+                  </span>
+                ) : (
+                  getFileIcon(node.name)
+                )}
+              </span>
+
+              {/* Name */}
+              <span className={`truncate select-none text-[12px] ${
+                isSelected ? 'text-white font-medium' : 'group-hover:text-white'
+              } transition-colors`}>
+                {node.name}
+              </span>
+            </div>
+
+            {/* Delete button */}
+            <button 
+              onClick={(e) => handleDelete(e, node.path, node.isDirectory)}
+              className="opacity-0 group-hover:opacity-100 p-0.5 text-[var(--kiri-muted)] hover:text-red-400 transition-all shrink-0 rounded"
+              title="Delete"
+            >
+              <Trash2 size={12} />
+            </button>
           </div>
-        )}
-      </div>
-    ));
+
+          {/* Children (only render if expanded) */}
+          {node.isDirectory && isExpanded && node.children && node.children.length > 0 && (
+            <div className="relative">
+              {/* Tree guide line */}
+              <div 
+                className="absolute top-0 bottom-0 border-l border-[#ffffff08]"
+                style={{ left: `${depth * 16 + 20}px` }}
+              />
+              {renderTree(node.children, depth + 1)}
+            </div>
+          )}
+        </div>
+      );
+    });
   };
 
   if (isLoading) {
-    return <div className="p-4 text-xs text-[var(--kiri-muted)] italic animate-pulse">Mounting file system...</div>;
+    return (
+      <div className="p-4 flex flex-col gap-2">
+        {[1, 2, 3, 4, 5].map(i => (
+          <div key={i} className="h-5 rounded bg-[#ffffff06] animate-pulse" style={{ width: `${60 + Math.random() * 30}%` }} />
+        ))}
+      </div>
+    );
   }
 
   return (
-    <div className="h-full w-full bg-[var(--kiri-surface-subtle)] flex flex-col text-xs font-medium text-[var(--kiri-body)] overflow-hidden">
-      <div className="flex items-center justify-end gap-2 p-2 border-b border-[var(--kiri-border)] shrink-0">
-        <button onClick={handleCreateFile} className="p-1 hover:bg-[var(--kiri-surface)] rounded text-[var(--kiri-muted)] hover:text-[var(--kiri-green)] transition-colors" title="New File">
-          <FilePlus size={14} />
-        </button>
-        <button onClick={handleCreateFolder} className="p-1 hover:bg-[var(--kiri-surface)] rounded text-[var(--kiri-muted)] hover:text-[var(--kiri-green)] transition-colors" title="New Folder">
-          <FolderPlus size={14} />
-        </button>
-        <button onClick={fetchFiles} className="p-1 hover:bg-[var(--kiri-surface)] rounded text-[var(--kiri-muted)] hover:text-[var(--kiri-green)] transition-colors" title="Refresh">
-          <RefreshCw size={14} />
-        </button>
+    <div className="h-full w-full bg-[var(--kiri-bg)] flex flex-col text-xs font-medium text-[var(--kiri-body)] overflow-hidden">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-[var(--kiri-border)] shrink-0">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--kiri-muted)]">Files</span>
+        <div className="flex items-center gap-1">
+          <button onClick={handleCreateFile} className="p-1 hover:bg-[#ffffff08] rounded text-[var(--kiri-muted)] hover:text-[var(--kiri-green)] transition-colors" title="New File">
+            <FilePlus size={14} />
+          </button>
+          <button onClick={handleCreateFolder} className="p-1 hover:bg-[#ffffff08] rounded text-[var(--kiri-muted)] hover:text-[var(--kiri-green)] transition-colors" title="New Folder">
+            <FolderPlus size={14} />
+          </button>
+          <button onClick={fetchFiles} className="p-1 hover:bg-[#ffffff08] rounded text-[var(--kiri-muted)] hover:text-[var(--kiri-green)] transition-colors" title="Refresh">
+            <RefreshCw size={14} />
+          </button>
+        </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-2">
+
+      {/* Tree */}
+      <div className="flex-1 overflow-y-auto py-1 custom-scrollbar">
         {files.length === 0 ? (
-          <div className="text-[var(--kiri-muted)] italic p-2 text-center opacity-70">
-            Workspace is empty. Ask Coder to scaffold an app!
+          <div className="text-[var(--kiri-muted)] italic p-4 text-center opacity-70 text-[11px]">
+            Workspace is empty. Ask the AI Agent to scaffold an app!
           </div>
         ) : (
           renderTree(files)

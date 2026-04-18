@@ -1,16 +1,24 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import MonacoEditor from '@monaco-editor/react';
 import CodeMirror from '@uiw/react-codemirror';
 import { getWebContainer } from '../../lib/services/webcontainer';
-import { runtimeRouter } from '../../lib/services/RuntimeRouter'; // <-- IMPORT THE ROUTER
-import { X } from 'lucide-react';
+import { runtimeRouter } from '../../lib/services/RuntimeRouter';
+import { X, Play, Sparkles, FolderTree, GitBranch, MessageSquare, Monitor, Keyboard, Zap, Globe, ChevronLeft, ChevronRight as ChevronRightIcon } from 'lucide-react';
+
+interface OpenFile {
+  path: string;
+  content: string;
+  modified: boolean;
+}
 
 const EditorRouter: React.FC = () => {
-  const [currentFile, setCurrentFile] = useState<string | null>(null);
-  const [fileContent, setFileContent] = useState<string>('');
+  const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
+  const [activeIndex, setActiveIndex] = useState<number>(-1);
   const [isMobile, setIsMobile] = useState<boolean>(false);
   const [isRunning, setIsRunning] = useState<boolean>(false);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const activeFile = activeIndex >= 0 ? openFiles[activeIndex] : null;
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -19,16 +27,24 @@ const EditorRouter: React.FC = () => {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // Listen for file open events from FileTree or Agent
   useEffect(() => {
     const handleOpenFile = async (e: Event) => {
       const customEvent = e as CustomEvent<{ path: string }>;
       const { path } = customEvent.detail;
+
+      // If file is already open, just switch to it
+      const existingIndex = openFiles.findIndex(f => f.path === path);
+      if (existingIndex >= 0) {
+        setActiveIndex(existingIndex);
+        return;
+      }
       
       try {
         const wc = await getWebContainer();
         const content = await wc.fs.readFile(path, 'utf8');
-        setCurrentFile(path);
-        setFileContent(content);
+        setOpenFiles(prev => [...prev, { path, content, modified: false }]);
+        setActiveIndex(openFiles.length); // will be the new last index
       } catch (error) {
         console.error('Failed to load file:', error);
       }
@@ -36,33 +52,58 @@ const EditorRouter: React.FC = () => {
 
     window.addEventListener('kiri:open-file', handleOpenFile);
     return () => window.removeEventListener('kiri:open-file', handleOpenFile);
-  }, []);
+  }, [openFiles]);
 
-  const handleEditorChange = (value: string | undefined) => {
+  // Broadcast current file info for the status bar
+  useEffect(() => {
+    if (activeFile) {
+      window.dispatchEvent(new CustomEvent('kiri:editor-status', {
+        detail: {
+          fileName: activeFile.path,
+          language: getLanguage(activeFile.path),
+          modified: activeFile.modified,
+        }
+      }));
+    }
+  }, [activeFile?.path, activeFile?.modified]);
+
+  const handleEditorChange = useCallback((value: string | undefined) => {
     const content = value || '';
-    setFileContent(content);
+    if (activeIndex < 0) return;
 
-    if (currentFile) {
+    setOpenFiles(prev => {
+      const next = [...prev];
+      next[activeIndex] = { ...next[activeIndex], content, modified: true };
+      return next;
+    });
+
+    const currentPath = openFiles[activeIndex]?.path;
+    if (currentPath) {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       
       saveTimeoutRef.current = setTimeout(async () => {
         try {
           const wc = await getWebContainer();
-          await wc.fs.writeFile(currentFile, content);
+          await wc.fs.writeFile(currentPath, content);
+          setOpenFiles(prev => {
+            const next = [...prev];
+            const idx = next.findIndex(f => f.path === currentPath);
+            if (idx >= 0) next[idx] = { ...next[idx], modified: false };
+            return next;
+          });
           window.dispatchEvent(new CustomEvent('kiri:fs-updated'));
         } catch (error) {
           console.error('Auto-save failed:', error);
         }
       }, 800);
     }
-  };
+  }, [activeIndex, openFiles]);
 
-  // <-- THE NEW RUN LOGIC
   const handleRunFile = async () => {
-    if (!currentFile) return;
+    if (!activeFile) return;
     setIsRunning(true);
     try {
-      await runtimeRouter.executeFile(currentFile, fileContent);
+      await runtimeRouter.executeFile(activeFile.path, activeFile.content);
     } catch (error: any) {
       console.error(error);
     } finally {
@@ -70,9 +111,21 @@ const EditorRouter: React.FC = () => {
     }
   };
 
-  const handleCloseFile = () => {
-    setCurrentFile(null);
-    setFileContent('');
+  const handleCloseTab = (e: React.MouseEvent, index: number) => {
+    e.stopPropagation();
+    setOpenFiles(prev => {
+      const next = prev.filter((_, i) => i !== index);
+      return next;
+    });
+    // Adjust active index
+    if (index === activeIndex) {
+      setActiveIndex(Math.max(0, index - 1));
+    } else if (index < activeIndex) {
+      setActiveIndex(activeIndex - 1);
+    }
+    if (openFiles.length <= 1) {
+      setActiveIndex(-1);
+    }
   };
 
   const getLanguage = (path: string) => {
@@ -87,59 +140,158 @@ const EditorRouter: React.FC = () => {
       case 'html': return 'html';
       case 'css': return 'css';
       case 'json': return 'json';
+      case 'md': return 'markdown';
+      case 'yaml': case 'yml': return 'yaml';
+      case 'sh': case 'bash': return 'shell';
       default: return 'plaintext';
     }
   };
 
-  if (!currentFile) {
+  const getFileIcon = (path: string) => {
+    const ext = path.split('.').pop()?.toLowerCase();
+    switch (ext) {
+      case 'ts': case 'tsx': return '🔷';
+      case 'js': case 'jsx': return '🟡';
+      case 'css': case 'scss': return '🟣';
+      case 'html': return '🟠';
+      case 'json': return '📋';
+      case 'py': return '🐍';
+      case 'md': return '📝';
+      default: return '📄';
+    }
+  };
+
+  // === WELCOME SCREEN (no files open) ===
+  if (openFiles.length === 0 || activeIndex < 0) {
     return (
-      <div className="h-full w-full bg-[var(--kiri-bg)] flex flex-col items-center justify-center relative overflow-hidden graduate-bg text-center px-6">
-        <div className="absolute inset-0 opacity-5 pointer-events-none bg-[url('/favicon.svg')] bg-no-repeat bg-center bg-[length:400px_auto]" />
-        <div className="z-10">
-          <div className="inline-block p-1 px-3 rounded-full bg-[var(--kiri-green)]/10 text-[var(--kiri-green)] text-[10px] font-bold uppercase tracking-widest mb-4 border border-[var(--kiri-green)]/20">
-            Serverless IDE
+      <div className="welcome-screen">
+        {/* Background effects */}
+        <div className="welcome-grid-bg" />
+        <div className="welcome-radial-glow" />
+
+        {/* Content */}
+        <div className="relative z-10 flex flex-col items-center max-w-lg w-full">
+          {/* Logo + Badge */}
+          <div className="mb-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--kiri-green)]/10 border border-[var(--kiri-green)]/20">
+              <Zap size={12} className="text-[var(--kiri-green)]" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--kiri-green)]">Serverless IDE</span>
+            </div>
           </div>
-          <p className="text-[13px] text-[var(--kiri-muted)] leading-relaxed max-w-md mx-auto">
-            How to start:
-            <br />1. Connect your GitHub account to import repositories.
-            <br />2. Use the Explorer to manage your files.
-            <br />3. Ask the AI Agent to help you write code and run commands.
+
+          <h1 className="text-2xl md:text-3xl font-extrabold text-white mb-2 tracking-tight text-center">
+            Kiri <span className="text-gradient">Code</span>
+          </h1>
+          <p className="text-sm text-[var(--kiri-muted)] mb-8 text-center max-w-sm leading-relaxed">
+            Build, run, and deploy full-stack apps entirely in your browser.
+            Powered by AI and WebContainers.
           </p>
-          <div className="mt-8 text-[11px] text-[var(--kiri-muted)] opacity-70">
-            Select a file from the explorer or ask the Agent to create one.
+
+          {/* Navigation Guide Cards */}
+          <div className="w-full space-y-3 mb-8">
+            {/* Left Panel Card */}
+            <div className="welcome-card">
+              <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
+                <ChevronLeft size={18} className="text-blue-400" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-[13px] font-semibold text-white mb-1 flex items-center gap-2">
+                  Click Left
+                  <span className="text-[10px] font-normal text-[var(--kiri-muted)]">Activity Bar</span>
+                </h3>
+                <p className="text-[11px] text-[var(--kiri-muted)] leading-relaxed">
+                  Expand the <span className="text-white font-medium inline-flex items-center gap-1"><FolderTree size={11}/> File Explorer</span> to browse & manage your project files, 
+                  or the <span className="text-white font-medium inline-flex items-center gap-1"><GitBranch size={11}/> Git panel</span> to clone repos and push commits to GitHub.
+                </p>
+              </div>
+            </div>
+
+            {/* Right Panel Card */}
+            <div className="welcome-card">
+              <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                <ChevronRightIcon size={18} className="text-emerald-400" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-[13px] font-semibold text-white mb-1 flex items-center gap-2">
+                  Click Right
+                  <span className="text-[10px] font-normal text-[var(--kiri-muted)]">AI Agent</span>
+                </h3>
+                <p className="text-[11px] text-[var(--kiri-muted)] leading-relaxed">
+                  Open the <span className="text-white font-medium inline-flex items-center gap-1"><MessageSquare size={11}/> AI Agent</span> panel to talk to your coding assistant. 
+                  It can write code, create files, install packages, and run terminal commands.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Feature pills */}
+          <div className="flex flex-wrap justify-center gap-2 mb-6">
+            {[
+              { icon: <Globe size={11} />, label: 'Zero Backend' },
+              { icon: <Sparkles size={11} />, label: '20+ AI Models' },
+              { icon: <Monitor size={11} />, label: 'Live Preview' },
+              { icon: <Keyboard size={11} />, label: 'Ctrl+B / Ctrl+L' },
+            ].map((feature, i) => (
+              <div key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#ffffff06] border border-[#ffffff08] text-[10px] text-[var(--kiri-muted)]">
+                {feature.icon}
+                {feature.label}
+              </div>
+            ))}
+          </div>
+
+          {/* Quick start hint */}
+          <div className="text-center">
+            <p className="text-[11px] text-[var(--kiri-muted)] opacity-60">
+              Select a file from the explorer or ask the AI Agent to create one
+            </p>
           </div>
         </div>
       </div>
     );
   }
 
+  // === EDITOR WITH TABS ===
   return (
     <div className="h-full w-full flex flex-col bg-[var(--kiri-bg)]">
-      {/* Editor Tab Bar WITH RUN BUTTON */}
-      <div className="h-9 shrink-0 bg-[var(--kiri-surface)] border-b border-[var(--kiri-border)] flex items-center px-3 justify-between">
-        <div className="text-[11px] font-medium text-[var(--kiri-green)] border-b-2 border-[var(--kiri-green)] h-full flex items-center px-2 gap-2 group">
-          <span>{currentFile.split('/').pop()}</span>
-          <button 
-            onClick={handleCloseFile}
-            className="opacity-0 group-hover:opacity-100 hover:text-white transition-opacity"
-            title="Close File"
+      {/* Tab Bar */}
+      <div className="tab-bar">
+        {openFiles.map((file, idx) => (
+          <div
+            key={file.path}
+            onClick={() => setActiveIndex(idx)}
+            className={`tab-item ${idx === activeIndex ? 'active' : ''}`}
           >
-            <X size={12} />
+            <span className="text-[11px]">{getFileIcon(file.path)}</span>
+            <span className="truncate max-w-[120px]">{file.path.split('/').pop()}</span>
+            {file.modified && <div className="modified-dot" />}
+            <button
+              onClick={(e) => handleCloseTab(e, idx)}
+              className="tab-close"
+              title="Close"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        ))}
+        
+        {/* Run button in the tab bar (right side) */}
+        <div className="ml-auto flex items-center px-2 shrink-0">
+          <button 
+            onClick={handleRunFile}
+            disabled={isRunning || !activeFile}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-[var(--kiri-green)]/10 text-[var(--kiri-green)] hover:bg-[var(--kiri-green)] hover:text-white border border-[var(--kiri-green)]/20 transition-all disabled:opacity-30 disabled:pointer-events-none"
+          >
+            <Play size={10} fill="currentColor" />
+            {isRunning ? 'Running...' : 'Run'}
           </button>
         </div>
-        <button 
-          onClick={handleRunFile}
-          disabled={isRunning}
-          className="text-[10px] font-bold uppercase tracking-widest bg-[var(--kiri-green)]/10 text-[var(--kiri-green)] hover:bg-[var(--kiri-green)] hover:text-white border border-[var(--kiri-green)]/30 px-3 py-1 rounded transition-colors disabled:opacity-50 flex items-center gap-1"
-        >
-          {isRunning ? 'Running...' : '▶ Run'}
-        </button>
       </div>
       
+      {/* Editor Area */}
       <div className="flex-1 overflow-hidden relative">
         {isMobile ? (
           <CodeMirror
-            value={fileContent}
+            value={activeFile?.content || ''}
             height="100%"
             theme="dark"
             onChange={handleEditorChange}
@@ -148,9 +300,9 @@ const EditorRouter: React.FC = () => {
         ) : (
           <MonacoEditor
             height="100%"
-            language={getLanguage(currentFile)}
+            language={activeFile ? getLanguage(activeFile.path) : 'plaintext'}
             theme="vs-dark"
-            value={fileContent}
+            value={activeFile?.content || ''}
             onChange={handleEditorChange}
             options={{
               minimap: { enabled: false },
@@ -158,6 +310,12 @@ const EditorRouter: React.FC = () => {
               fontFamily: '"JetBrains Mono", monospace',
               wordWrap: 'on',
               padding: { top: 16 },
+              smoothScrolling: true,
+              cursorBlinking: 'smooth',
+              cursorSmoothCaretAnimation: 'on',
+              renderLineHighlight: 'gutter',
+              scrollBeyondLastLine: false,
+              bracketPairColorization: { enabled: true },
             }}
           />
         )}
