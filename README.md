@@ -1,6 +1,35 @@
-<img src="public/icons.svg" alt="Kiri Code" />
+<div align="center">
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+  <img src="public/icons.svg" alt="Kiri Code" />
+
+  <p>
+    <img src="https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
+    <img src="https://img.shields.io/badge/React-20232A?style=flat-square&logo=react&logoColor=61DAFB" alt="React">
+    <img src="https://img.shields.io/badge/WebContainers-blue?style=flat-square" alt="WebContainers">
+  </p>
+
+  <h3>⚠️ PROJECT ARCHIVED & DEPRECATED ⚠️</h3>
+
+</div>
+
+> **Notice:** This project is no longer actively maintained and has been archived in a read-only state.
+
+## Why is this archived?
+
+I built Kiri Code to explore what in-browser AI coding tools could do. I am proud of the project, but keeping it going takes more time and money than I can justify right now.
+
+My main work is in Python, so maintaining a large TypeScript and React app is outside my usual focus. For an active alternative in this space, see [Bolt DIY](https://github.com/stackblitz-labs/bolt.diy), the official open source version of Bolt.new. 
+
+The code will stay public for historical, educational, and research use. You are welcome to fork it, study the WebContainer work, or reuse parts of the code, but there will be **no further updates, bug fixes, or support will be provided.**
+
+---
+
+## Legacy Documentation
+
+<details>
+<summary><b>Click here to view the original project documentation</b></summary>
+
+<img src="public/icons.svg" alt="Kiri Code" />
 
 An autonomous, 100% serverless, polyglot AI coding IDE that runs entirely in your browser.
 
@@ -80,3 +109,4 @@ Kiri Code operates strictly on a **Bring Your Own Key** model.
 ## 📜 License
 
 This project is licensed under the [MIT License](LICENSE).
+</details>
